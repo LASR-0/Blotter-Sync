@@ -41,7 +41,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 
 | # | Phase | Needs (Blotter) | Planned message | Status |
 |---|---|---|---|---|
-| 01 | — | — | `docs: Blotter Sync plan` | committed (hash in the next entry) |
+| 01 | — | — | `docs: Blotter Sync plan` | committed `d2b0f9b`, pushed |
+| 01a | — | — | `docs: confirm the sync schema gate and the blotter-sync name` | committed (hash in the next entry) |
 | 02 | 0 | — | `chore: scaffold the blotter-sync package, lints and CI on Windows and Linux` | planned |
 | 03 | 1 | #73 | `feat: data dir, server state store and hello` | planned |
 | 04 | 1 | #73 | `feat: pairing, device tokens, revocation and the admin CLI` | planned |
@@ -82,3 +83,17 @@ Test steps:
 Notes:
     - Proposed, for Luke: D-S15 (gate on a sync schema version, not the full migration
       count) and D-S16 (the names Blotter Sync / blotter-sync).
+
+### #01a — Confirm the sync schema gate and the blotter-sync name            [status: committed — hash in the next entry]
+Phase: —
+Message:
+    docs: confirm the sync schema gate and the blotter-sync name
+
+    Luke confirmed D-S15 (gating by a sync schema version that changes
+    only with synced tables and columns) and D-S16 (Blotter Sync,
+    blotter-sync, ghcr.io/lasr-0/blotter-sync). The GitHub repo is
+    LASR-0/Blotter-Sync. #01 is d2b0f9b.
+Files:
+    M  .claude/server-roadmap.md, .claude/COMMITS.md
+Test steps:
+    - none (docs only)

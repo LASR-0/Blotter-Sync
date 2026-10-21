@@ -2,7 +2,7 @@
 
 > **Blotter Sync** is a headless Blotter that runs on your home server and keeps every desktop's planner in sync through it.
 
-This document is the source of truth for the Blotter Sync server, which lives in its own repository (`LASR-0/Blotter-sync`, this repo). It is a **handover brief** for the implementing agent, in the same style as the Blotter app's roadmap: each phase gives intent, constraints, acceptance criteria (AC) and leads to verify. It does not prescribe file-level changes; the implementer decides structure within the constraints here.
+This document is the source of truth for the Blotter Sync server, which lives in its own repository (`LASR-0/Blotter-Sync`, this repo). It is a **handover brief** for the implementing agent, in the same style as the Blotter app's roadmap: each phase gives intent, constraints, acceptance criteria (AC) and leads to verify. It does not prescribe file-level changes; the implementer decides structure within the constraints here.
 
 **Two repositories, two documents:**
 - **This roadmap** covers the server: its HTTP API, pairing and auth, storage, headless duties, deployment (Docker, native Linux and Windows) and the Home Assistant add-on.
@@ -235,12 +235,12 @@ To refine once 1.0.0 is live; expected shape:
 | D-S8 | "Per field" means **per field group**: columns tied by a CHECK, FK pair or op invariant merge together | Confirmed (Luke, 2026-10-22) |
 | D-S9 | Every device fires reminders (`fired_at` device-local); snoozing on any device applies everywhere | Confirmed (Luke, 2026-10-22) |
 | D-S10 | Delete wins over concurrent edits; children of a deleted row are deleted; natural-unique collisions keep the earlier row | Confirmed (Luke, 2026-10-22) |
-| D-S11 | The server lives in **its own repo**, `LASR-0/Blotter-sync`, with its own version. It depends on `blotter-core` as a git dependency pinned to a Blotter release tag, with a local-path override for development. Supersedes "a crate in the Blotter repo" | Confirmed (Luke, 2026-10-22) |
+| D-S11 | The server lives in **its own repo**, `LASR-0/Blotter-Sync`, with its own version. It depends on `blotter-core` as a git dependency pinned to a Blotter release tag, with a local-path override for development. Supersedes "a crate in the Blotter repo" | Confirmed (Luke, 2026-10-22) |
 | D-S12 | **Blotter 1.2.1** brings sync to the app; **Blotter Sync 1.0.0** is the first server release. Compatibility is by sync protocol and sync schema, recorded in a compatibility table in both repos. Supersedes "both ship as v1.3.0" | Confirmed (Luke, 2026-10-22) |
 | D-S13 | The Home Assistant add-on is the next release after the server goes live: **Blotter Sync 1.1.0** | Confirmed (Luke, 2026-10-22; was v1.4.0) |
 | D-S14 | The server builds and runs **natively on Windows (x64) and Linux (amd64, arm64)** as well as in Docker. Development is native on Windows; Linux and Docker are tested in WSL before each release, and CI covers both from the start | Confirmed (Luke, 2026-10-22) |
-| D-S15 | Gating uses a **sync schema** version that changes only with synced tables and columns (pinned by a registry test), not the core's full migration count, so app releases that touch only device-local data don't need a new server | **Proposed** |
-| D-S16 | Product, binary and image are named **Blotter Sync**, `blotter-sync`, `ghcr.io/lasr-0/blotter-sync`, after the repo | **Proposed** |
+| D-S15 | Gating uses a **sync schema** version that changes only with synced tables and columns (pinned by a registry test), not the core's full migration count, so app releases that touch only device-local data don't need a new server | Confirmed (Luke, 2026-10-22) |
+| D-S16 | Product, binary and image are named **Blotter Sync**, `blotter-sync`, `ghcr.io/lasr-0/blotter-sync` (lowercase, as GHCR requires), after the repo `LASR-0/Blotter-Sync` | Confirmed (Luke, 2026-10-22) |
 | O1 | Custom themes (the `themes` table) and keybinding overrides **sync**; the **selected theme** stays per device. (The OS-level quick-capture shortcut isn't a keybinding override, so it was never going to sync.) | Confirmed (Luke, 2026-10-22) |
 
 ---
