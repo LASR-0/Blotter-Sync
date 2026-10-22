@@ -50,8 +50,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | 06 | 1 | — | `feat: change stream over server-sent events` | committed `0349037` |
 | 07 | 1 | #79 | `feat: headless rollover, subscriptions, holidays and backups` | committed `25129d6` |
 | 08 | 1 | — | `feat: snapshots, restore and import with epochs` | committed `cf84f15` |
-| 09 | 1 | — | `feat: read-only status page` | committed (hash in the next entry) |
-| 10 | 1 | — | `test: two replicas syncing over HTTP` | planned |
+| 09 | 1 | — | `feat: read-only status page` | committed `8d783a4` |
+| 10 | 1 | — | `test: two replicas syncing over HTTP` | committed (hash in the next entry) |
 | 11 | 1 | — | `build: Dockerfile, non-root and read-only` | planned |
 | 12 | 2 | — | `ci: multi-arch image and Linux and Windows binaries on release` | planned |
 | 13 | 2 | — | `docs(deploy): compose profiles, native installs and the compatibility table` | planned |
@@ -413,3 +413,31 @@ Test steps:
 Notes:
     - Headless Edge won't go below ~500 px wide, so phone width wasn't seen; the details
       list stacks under 520 px and the device table scrolls inside its card.
+
+### #10 — Two replicas syncing over HTTP            [status: committed — hash in the next entry]
+Phase: 1
+Message:
+    test: two replicas syncing over HTTP
+
+    An end-to-end test with the app's side of the protocol played by two
+    blotter-core Planners and reqwest, against the server on a local
+    port (roadmap §7): both pair and bootstrap; the laptop creates an
+    event through the operation layer and pushes; the desktop, listening
+    on the change stream, hears the new seq, pulls and has it. Then a
+    reschedule on one and a retitle on the other, made offline, both
+    survive, and both replicas match the server row for row. Undo on the
+    laptop refuses to reverse its reschedule over the desktop's retitle,
+    and does reverse its own edit to an item no one else touched, which
+    then syncs. #09 is 8d783a4.
+Files:
+    A  tests/two_replicas.rs
+    M  Cargo.toml, Cargo.lock (reqwest json, dev only)
+    M  .claude/COMMITS.md
+Test steps:
+    - cargo fmt --check, cargo clippy --all-targets -D warnings → clean
+    - cargo test → 41 unit + 1 integration passed
+Notes:
+    - For Luke: undo is item-level (Blotter #27, #78): any later change to the item, from
+      any device, blocks undoing an earlier edit to it, even in another field group. A
+      finer undo (only the fields it would revert) is possible as a Blotter change if
+      that's wanted.
