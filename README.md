@@ -28,13 +28,21 @@ cargo run -- serve --listen 127.0.0.1:7458
 curl http://127.0.0.1:7458/v1/hello
 ```
 
+Admin commands (run them beside a running server, or with `docker exec`):
+
+```sh
+blotter-sync pair              # a single-use pairing code, valid 10 minutes
+blotter-sync devices           # paired devices, last seen, revoked or not
+blotter-sync revoke Laptop     # disconnect a device by name or id
+```
+
 | Setting | Flag | Environment |
 |---|---|---|
 | Listen address | `--listen` | `BLOTTER_SYNC_LISTEN` |
 | Data directory | `--data-dir` | `BLOTTER_SYNC_DATA_DIR` |
 | Log filter | | `BLOTTER_SYNC_LOG` (e.g. `debug`) |
 
-The default port is **7458**. The data directory holds the canonical planner (`blotter.db`) and the server's own state (`server.db`); by default it is `%ProgramData%Blotter Sync` on Windows and `~/.local/share/blotter-sync` on Linux (`$XDG_DATA_HOME` if set).
+The default port is **7458**. The data directory holds the canonical planner (`blotter.db`) and the server's own state (`server.db`); by default it is `%ProgramData%\Blotter Sync` on Windows and `~/.local/share/blotter-sync` on Linux (`$XDG_DATA_HOME` if set).
 
 ## Development
 

@@ -44,8 +44,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | 01 | — | — | `docs: Blotter Sync plan` | committed `d2b0f9b`, pushed |
 | 01a | — | — | `docs: confirm the sync schema gate and the blotter-sync name` | committed `857bdae` |
 | 02 | 0 | — | `chore: scaffold the blotter-sync package, lints and CI on Windows and Linux` | committed `359e5d1` |
-| 03 | 1 | #73 | `feat: data dir, server state store and hello` | committed (hash in the next entry) |
-| 04 | 1 | #73 | `feat: pairing, device tokens, revocation and the admin CLI` | planned |
+| 03 | 1 | #73 | `feat: data dir, server state store and hello` | committed `0b7d2ba` |
+| 04 | 1 | #73 | `feat: pairing, device tokens, revocation and the admin CLI` | committed (hash in the next entry) |
 | 05 | 1 | #73–#78 | `feat: push, pull and bootstrap` | planned |
 | 06 | 1 | — | `feat: change stream over server-sent events` | planned |
 | 07 | 1 | #79 | `feat: headless rollover, subscriptions, holidays and backups` | planned |
@@ -172,3 +172,50 @@ Notes:
     - Windows: the data directory keeps %ProgramData%'s default permissions for now; an
       owner-only ACL (roadmap §5.4) comes with the native install docs (Phase 2).
     - The planner's days follow its synced timezone setting; UTC until a device sets one.
+
+### #04 — Pairing, device tokens, revocation and the admin CLI            [status: committed — hash in the next entry]
+Phase: 1
+Message:
+    feat: pairing, device tokens, revocation and the admin CLI
+
+    Auth as D-S6 and roadmap §5.4 describe it.
+
+    - `blotter-sync pair` opens a code (ABCD-EFGH, no look-alike letters)
+      that works once, for 10 minutes, and is burned by the fifth wrong
+      guess; codes are kept only as hashes. POST /v1/pair trades it, with
+      the device's id (a ULID) and name, for a 256-bit token, shown once
+      and stored only as its SHA-256. Pairing the same device again
+      replaces its token and lifts a revocation.
+    - Every request but hello must carry the sync protocol and schema
+      headers; a mismatch is refused (409) with the server's versions
+      and which side to update. Authenticated routes take a Device
+      extractor: versions, then the bearer token (unknown → unauthorized,
+      revoked → revoked).
+    - Per-address limits: 10 pairing attempts or failed authentications a
+      minute, then rate_limited (429). The server records client
+      addresses for this.
+    - DELETE /v1/devices/self disconnects the calling device.
+    - `blotter-sync devices` lists devices (name, id, paired, last seen,
+      status); `blotter-sync revoke <name or id>` disconnects one. Both
+      work beside a running server.
+    - hello says whether a pairing code is open. Tokens never reach the
+      log.
+
+    README: the admin commands; the data directory's Windows path had
+    lost its backslash. #03 is 0b7d2ba.
+Files:
+    A  src/auth.rs, src/routes.rs, migrations/0002_devices.sql
+    M  src/lib.rs, src/main.rs, src/api.rs, src/server.rs, src/store.rs
+    M  README.md, .claude/COMMITS.md
+Test steps:
+    - cargo fmt --check, cargo clippy --all-targets -D warnings → clean
+    - cargo test → 20 passed: codes and normalising, single use, expiry, burning after five
+      wrong guesses, bad device details (code not spent), revoke and re-pair, ambiguous
+      names; over HTTP: hello's pairing flag, pair → token → disconnect → revoked, typed
+      refusals, protocol and schema mismatches both ways, missing headers, bad tokens, and
+      the per-address limit for auth and pairing
+    - Live on Windows: serve; `pair` from a second process; pair over HTTP; `devices` lists
+      Laptop; `revoke laptop`; the old token gets "revoked"; the token isn't in the log
+Notes:
+    - Behind Caddy every client shares the proxy's address for the limit; fine for one
+      household, noted for the deploy docs.

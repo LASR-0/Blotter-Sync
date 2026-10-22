@@ -7,7 +7,10 @@ use rusqlite::Connection;
 use rusqlite_migration::{M, Migrations};
 
 /// Ordered schema migrations. Append new ones; never edit a shipped one.
-const MIGRATION_LIST: &[M<'static>] = &[M::up(include_str!("../migrations/0001_meta.sql"))];
+const MIGRATION_LIST: &[M<'static>] = &[
+    M::up(include_str!("../migrations/0001_meta.sql")),
+    M::up(include_str!("../migrations/0002_devices.sql")),
+];
 const MIGRATIONS: Migrations<'static> = Migrations::from_slice(MIGRATION_LIST);
 
 #[derive(Debug, thiserror::Error)]

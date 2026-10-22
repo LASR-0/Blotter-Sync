@@ -68,7 +68,7 @@ impl Server {
             server_id: meta.server_id,
             versions: Versions::SERVER,
             epoch: meta.epoch,
-            pairing_open: false,
+            pairing_open: crate::auth::pairing_open(&self.store, chrono::Utc::now())?,
         })
     }
 }
