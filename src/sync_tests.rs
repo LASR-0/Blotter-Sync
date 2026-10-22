@@ -412,3 +412,143 @@ async fn the_change_stream_needs_a_token() {
     let (status, _) = call(&app, "GET", "/v1/events", "nope", None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+fn world_on_disk() -> (Router, Shared, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let shared = Server::open(dir.path()).unwrap().shared();
+    (router(shared.clone()), shared, dir)
+}
+
+#[tokio::test]
+async fn restoring_a_snapshot_sends_every_device_back_to_bootstrap() {
+    let (app, shared, _dir) = world_on_disk();
+    let mut laptop = join(&app, &shared, "Laptop").await;
+    laptop.add_item("I1", "Before");
+    laptop.push(&app).await;
+
+    let (status, snap) = call(
+        &app,
+        "POST",
+        "/v1/snapshots",
+        &laptop.token,
+        Some(json!({ "note": "good" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{snap}");
+    assert!(
+        snap.get("path").is_none(),
+        "the server's paths stay on the server"
+    );
+    let id = snap["id"].as_str().unwrap().to_owned();
+
+    laptop
+        .db
+        .conn()
+        .execute("UPDATE items SET title = 'After' WHERE id = 'I1'", [])
+        .unwrap();
+    laptop.push(&app).await;
+
+    let (_, listed) = call(&app, "GET", "/v1/snapshots", &laptop.token, None).await;
+    assert!(
+        listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s["id"] == id && s["note"] == "good")
+    );
+
+    let (status, done) = call(
+        &app,
+        "POST",
+        &format!("/v1/snapshots/{id}/restore"),
+        &laptop.token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{done}");
+    assert_ne!(done["epoch"], laptop.epoch);
+    assert_eq!(done["before"]["reason"], "before_restore");
+
+    // The old epoch is refused; a bootstrap brings the restored planner.
+    let (status, err) = call(
+        &app,
+        "GET",
+        &format!("/v1/pull?epoch={}&since={}", laptop.epoch, laptop.seq),
+        &laptop.token,
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, err["code"].as_str()),
+        (StatusCode::GONE, Some("stale_epoch"))
+    );
+    let desktop = join(&app, &shared, "Desktop").await;
+    assert_eq!(desktop.epoch, done["epoch"]);
+    assert_eq!(desktop.title("I1").as_deref(), Some("Before"));
+    let log: i64 = shared
+        .lock()
+        .unwrap()
+        .store
+        .conn()
+        .query_row("SELECT count(*) FROM log", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(log, 0, "the log starts over with the new epoch");
+}
+
+#[tokio::test]
+async fn importing_an_export_replaces_the_planner() {
+    let (app, shared, _dir) = world_on_disk();
+    let mut laptop = join(&app, &shared, "Laptop").await;
+    laptop.add_item("OLD", "On the server");
+    laptop.push(&app).await;
+
+    let other = Database::open_in_memory().unwrap();
+    other
+        .conn()
+        .execute(
+            "INSERT INTO items (id, kind, anchoring, title, created_at, updated_at) \
+             VALUES ('NEW', 'task', 'flexible', 'From the file', ?1, ?1)",
+            [T0],
+        )
+        .unwrap();
+    let export = blotter_core::export::export(other.conn(), chrono::Utc::now()).unwrap();
+    let (status, done) = call(
+        &app,
+        "POST",
+        "/v1/import",
+        &laptop.token,
+        Some(serde_json::to_value(&export).unwrap()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{done}");
+    assert_eq!(done["before"]["reason"], "before_import");
+
+    let desktop = join(&app, &shared, "Desktop").await;
+    assert_eq!(desktop.title("NEW").as_deref(), Some("From the file"));
+    assert_eq!(desktop.title("OLD"), None);
+}
+
+#[tokio::test]
+async fn snapshot_refusals() {
+    let (app, shared, _dir) = world_on_disk();
+    let laptop = join(&app, &shared, "Laptop").await;
+    let (status, err) = call(
+        &app,
+        "POST",
+        "/v1/snapshots/NOPE/restore",
+        &laptop.token,
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, err["code"].as_str()),
+        (StatusCode::BAD_REQUEST, Some("invalid"))
+    );
+    let (status, _) = call(&app, "GET", "/v1/snapshots", "nope", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (app, shared) = world();
+    let laptop = join(&app, &shared, "Laptop").await;
+    let (status, err) = call(&app, "POST", "/v1/snapshots", &laptop.token, None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{err}");
+}

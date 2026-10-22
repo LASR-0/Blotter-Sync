@@ -48,8 +48,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | 04 | 1 | #73 | `feat: pairing, device tokens, revocation and the admin CLI` | committed `a680b4a` |
 | 05 | 1 | #73–#78 | `feat: push, pull and bootstrap` | committed `8869958` |
 | 06 | 1 | — | `feat: change stream over server-sent events` | committed `0349037` |
-| 07 | 1 | #79 | `feat: headless rollover, subscriptions, holidays and backups` | committed (hash in the next entry) |
-| 08 | 1 | — | `feat: snapshots, restore and import with epochs` | planned |
+| 07 | 1 | #79 | `feat: headless rollover, subscriptions, holidays and backups` | committed `25129d6` |
+| 08 | 1 | — | `feat: snapshots, restore and import with epochs` | committed (hash in the next entry) |
 | 09 | 1 | — | `feat: read-only status page` | planned |
 | 10 | 1 | — | `test: two replicas syncing over HTTP` | planned |
 | 11 | 1 | — | `build: Dockerfile, non-root and read-only` | planned |
@@ -344,3 +344,43 @@ Notes:
       Phase 2 (ring is the fallback).
     - The Nager.Date fetch itself is covered by Blotter's live test (#79); here the import
       runs from a canned answer.
+
+### #08 — Snapshots, restore and import with epochs            [status: committed — hash in the next entry]
+Phase: 1
+Message:
+    feat: snapshots, restore and import with epochs
+
+    The server's planner can be snapshotted, restored and replaced from a
+    JSON export, from a device or the CLI (roadmap §5.1, H5).
+
+    - GET /v1/snapshots lists them (id, reason, manual, note, size, time;
+      never the server's file paths); POST /v1/snapshots takes a manual
+      one, with an optional note.
+    - POST /v1/snapshots/{id}/restore restores one, after a "before
+      restore" snapshot; POST /v1/import replaces the planner with a
+      Blotter JSON export, after a "before import" one. Both start a new
+      epoch: the change log and stored push answers are cleared, the
+      restored stamps count as sent, and the change stream announces the
+      epoch, so every device gets stale_epoch and bootstraps the new
+      planner whole.
+    - `blotter-sync snapshot [--note]`, `snapshots` and `restore <id>` do
+      the same beside a running server; its next duty tick sees the new
+      epoch and announces it.
+    - Admin commands log only warnings, so their output reads cleanly.
+    #07 is 25129d6.
+Files:
+    A  src/admin.rs
+    M  src/routes.rs, src/main.rs, src/lib.rs, src/duties.rs, src/sync_tests.rs
+    M  README.md, .claude/COMMITS.md
+Test steps:
+    - cargo fmt --check, cargo clippy --all-targets -D warnings → clean
+    - cargo test → 39 passed; new: snapshot (no path in the answer, listed with its note),
+      edit, restore → a new epoch, "before_restore" snapshot, the old epoch refused, a
+      new device bootstraps the earlier title, the log empty; an export imported over the
+      server's planner replaces it ("before_import"); an unknown snapshot is invalid,
+      listing needs a token, an in-memory server keeps none
+    - Live on Windows: serve, pair, `snapshot --note …`, `snapshots` lists it beside the
+      daily one, `restore <id>` from a second process; within the next tick the open
+      change stream shows the new epoch, and hello agrees
+Notes:
+    - In Blotter, Settings → Snapshots in Home server mode uses these endpoints (#84).

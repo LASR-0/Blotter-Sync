@@ -5,12 +5,13 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRequestParts, Query, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRequestParts, Path, Query, State};
 use axum::http::HeaderMap;
 use axum::http::request::Parts;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
+use blotter_core::export::Export;
 use serde::Deserialize;
 use std::convert::Infallible;
 use tokio_stream::wrappers::WatchStream;
@@ -18,6 +19,7 @@ use tokio_stream::{Stream, StreamExt};
 use tower_http::compression::CompressionLayer;
 use tower_http::decompression::RequestDecompressionLayer;
 
+use crate::admin::{self, Replaced, SnapshotInfo};
 use crate::api::{ApiError, ErrorBody, ErrorCode, HEADER_PROTOCOL, HEADER_SCHEMA, Hello, Versions};
 use crate::auth::{self, PairRequest, Paired};
 use crate::changes::{self, Bootstrap, PullResponse, PushRequest, PushResponse};
@@ -92,6 +94,9 @@ pub fn router(server: Shared) -> Router {
         .route("/v1/pull", get(pull))
         .route("/v1/bootstrap", get(bootstrap))
         .route("/v1/events", get(events))
+        .route("/v1/snapshots", get(list_snapshots).post(create_snapshot))
+        .route("/v1/snapshots/{id}/restore", post(restore_snapshot))
+        .route("/v1/import", post(import))
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .layer(RequestDecompressionLayer::new())
         .layer(CompressionLayer::new())
@@ -282,6 +287,54 @@ async fn events(
             .unwrap_or_else(|_| Event::default().event("seq")))
     });
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(KEEP_ALIVE)))
+}
+
+async fn list_snapshots(
+    State(app): State<App>,
+    _device: Device,
+) -> Result<Json<Vec<SnapshotInfo>>, ApiError> {
+    server::with(&app.server, |s| admin::list(s))
+        .await
+        .map(Json)
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct SnapshotRequest {
+    #[serde(default)]
+    note: Option<String>,
+}
+
+async fn create_snapshot(
+    State(app): State<App>,
+    _device: Device,
+    body: Option<Json<SnapshotRequest>>,
+) -> Result<Json<SnapshotInfo>, ApiError> {
+    let note = body.and_then(|Json(b)| b.note);
+    server::with(&app.server, move |s| admin::snapshot(s, note))
+        .await
+        .map(Json)
+}
+
+async fn restore_snapshot(
+    State(app): State<App>,
+    device: Device,
+    Path(id): Path<String>,
+) -> Result<Json<Replaced>, ApiError> {
+    tracing::info!(device = %device.id, snapshot = %id, "restore asked for");
+    server::with(&app.server, move |s| admin::restore(s, &id))
+        .await
+        .map(Json)
+}
+
+async fn import(
+    State(app): State<App>,
+    device: Device,
+    Json(export): Json<Export>,
+) -> Result<Json<Replaced>, ApiError> {
+    tracing::info!(device = %device.id, "import asked for");
+    server::with(&app.server, move |s| admin::import(s, &export))
+        .await
+        .map(Json)
 }
 
 #[cfg(test)]

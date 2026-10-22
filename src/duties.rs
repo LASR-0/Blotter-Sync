@@ -58,6 +58,9 @@ fn log_err<T>(what: &str, r: blotter_core::Result<T>) -> Option<T> {
 /// The database half of a tick: runs what's due, logs it for devices, and
 /// returns what needs fetching.
 pub fn tick(server: &mut Server) -> Result<Fetches, ApiError> {
+    // A restore made from the CLI (another process) moved the epoch:
+    // tell the change streams.
+    server.announce(changes::current_seq(&server.store)?)?;
     let planner = &mut server.planner;
     let now = planner.now();
     let tz = planner.settings().map_err(ApiError::internal)?.tz;

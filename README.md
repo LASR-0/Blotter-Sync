@@ -34,6 +34,9 @@ Admin commands (run them beside a running server, or with `docker exec`):
 blotter-sync pair              # a single-use pairing code, valid 10 minutes
 blotter-sync devices           # paired devices, last seen, revoked or not
 blotter-sync revoke Laptop     # disconnect a device by name or id
+blotter-sync snapshot --note x # a snapshot of the planner, kept until deleted
+blotter-sync snapshots         # daily, manual and before-restore snapshots
+blotter-sync restore <id>      # put one back; every device fetches the planner again
 ```
 
 | Setting | Flag | Environment |

@@ -5,6 +5,7 @@
 //! shared with the desktop app. This crate adds the HTTP API, pairing,
 //! storage for server-only state and the headless duties.
 
+pub mod admin;
 pub mod api;
 pub mod auth;
 pub mod changes;

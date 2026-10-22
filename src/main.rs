@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use blotter_sync::server::Server;
 use blotter_sync::store::Store;
 use blotter_sync::{DEFAULT_PORT, VERSION, config, router};
-use blotter_sync::{auth, duties};
+use blotter_sync::{admin, auth, duties};
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
@@ -39,6 +39,19 @@ enum Command {
         /// The device's name (as `devices` lists it) or id.
         device: String,
     },
+    /// Take a snapshot of the planner now (kept until you delete it).
+    Snapshot {
+        /// A few words to tell it apart later.
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// List the planner's snapshots.
+    Snapshots,
+    /// Restore a snapshot; every device then fetches the planner again.
+    Restore {
+        /// The snapshot's id, as `snapshots` lists it.
+        id: String,
+    },
 }
 
 #[derive(clap::Args, Default)]
@@ -53,19 +66,26 @@ struct ServeArgs {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    let cli = Cli::parse();
+    // The server logs its work; the admin commands print their answer and
+    // only warnings besides.
+    let serving = matches!(cli.command, None | Some(Command::Serve(_)));
+    let default = if serving { "info" } else { "warn" };
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_env("BLOTTER_SYNC_LOG").unwrap_or_else(|_| EnvFilter::new("info")),
+            EnvFilter::try_from_env("BLOTTER_SYNC_LOG").unwrap_or_else(|_| EnvFilter::new(default)),
         )
         .init();
 
-    let cli = Cli::parse();
     let data_dir = cli.data_dir.unwrap_or_else(config::default_data_dir);
     let result = match cli.command.unwrap_or(Command::Serve(ServeArgs::default())) {
         Command::Serve(args) => serve(&data_dir, args).await,
         Command::Pair => pair(&data_dir),
         Command::Devices => list_devices(&data_dir),
         Command::Revoke { device } => revoke(&data_dir, &device),
+        Command::Snapshot { note } => snapshot(&data_dir, note),
+        Command::Snapshots => list_snapshots(&data_dir),
+        Command::Restore { id } => restore(&data_dir, &id),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -178,4 +198,46 @@ async fn shutdown_signal() {
         () = terminate => {},
     }
     tracing::info!("shutting down");
+}
+
+fn snapshot(data_dir: &Path, note: Option<String>) -> Result<(), Failure> {
+    let snap = admin::snapshot(&Server::open(data_dir)?, note)?;
+    println!("Snapshot {} taken.", snap.id);
+    Ok(())
+}
+
+fn list_snapshots(data_dir: &Path) -> Result<(), Failure> {
+    let snaps = admin::list(&Server::open(data_dir)?)?;
+    if snaps.is_empty() {
+        println!("No snapshots yet; the first daily one comes soon after the server starts.");
+        return Ok(());
+    }
+    println!(
+        "{:<26} {:<20} {:<15} {:>9} NOTE",
+        "ID", "TAKEN (UTC)", "REASON", "SIZE"
+    );
+    for s in snaps {
+        let size = s
+            .size_bytes
+            .map_or_else(|| "—".to_owned(), |b| format!("{} KB", b / 1024));
+        println!(
+            "{:<26} {:<20} {:<15} {:>9} {}",
+            s.id,
+            s.created_at.replace('T', " ").trim_end_matches('Z'),
+            s.reason,
+            size,
+            s.note.unwrap_or_default()
+        );
+    }
+    Ok(())
+}
+
+fn restore(data_dir: &Path, id: &str) -> Result<(), Failure> {
+    let done = admin::restore(&mut Server::open(data_dir)?, id)?;
+    println!(
+        "Restored. Every device will fetch the planner again (epoch {}). \
+         The planner as it was is snapshot {}.",
+        done.epoch, done.before.id
+    );
+    Ok(())
 }
