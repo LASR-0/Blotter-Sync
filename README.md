@@ -31,9 +31,10 @@ curl http://127.0.0.1:7458/v1/hello
 | Setting | Flag | Environment |
 |---|---|---|
 | Listen address | `--listen` | `BLOTTER_SYNC_LISTEN` |
+| Data directory | `--data-dir` | `BLOTTER_SYNC_DATA_DIR` |
 | Log filter | | `BLOTTER_SYNC_LOG` (e.g. `debug`) |
 
-The default port is **7458**.
+The default port is **7458**. The data directory holds the canonical planner (`blotter.db`) and the server's own state (`server.db`); by default it is `%ProgramData%Blotter Sync` on Windows and `~/.local/share/blotter-sync` on Linux (`$XDG_DATA_HOME` if set).
 
 ## Development
 

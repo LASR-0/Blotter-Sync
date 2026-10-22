@@ -10,15 +10,25 @@ publish = false
 
 [dependencies]
 axum = "0.8.9"
-# Pinned to a Blotter release; a local .cargo/config.toml can point it at
+base64 = "0.23.1"
+# Pinned to a Blotter commit until 1.2.1 is tagged, then to the tag; a local
+# .cargo/config.toml can point it at
 # ../Blotter during development (README).
-blotter-core = { git = "https://github.com/LASR-0/Blotter.git", tag = "v1.2.0" }
+blotter-core = { git = "https://github.com/LASR-0/Blotter.git", rev = "aa31b69" }
+chrono = "0.4.45"
+chrono-tz = "0.10.4"
 clap = { version = "4.6.7", features = ["derive", "env"] }
+getrandom = "0.4.3"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+rusqlite_migration = "2.6.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+sha2 = "0.11.1"
+thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "signal"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+ulid = "3.0.0"
 
 [profile.release]
 codegen-units = 1
@@ -35,4 +45,5 @@ expect_used = "warn"
 
 [dev-dependencies]
 http-body-util = "0.1.5"
+tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }

@@ -43,8 +43,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 |---|---|---|---|---|
 | 01 | — | — | `docs: Blotter Sync plan` | committed `d2b0f9b`, pushed |
 | 01a | — | — | `docs: confirm the sync schema gate and the blotter-sync name` | committed `857bdae` |
-| 02 | 0 | — | `chore: scaffold the blotter-sync package, lints and CI on Windows and Linux` | committed (hash in the next entry) |
-| 03 | 1 | #73 | `feat: data dir, server state store and hello` | planned |
+| 02 | 0 | — | `chore: scaffold the blotter-sync package, lints and CI on Windows and Linux` | committed `359e5d1` |
+| 03 | 1 | #73 | `feat: data dir, server state store and hello` | committed (hash in the next entry) |
 | 04 | 1 | #73 | `feat: pairing, device tokens, revocation and the admin CLI` | planned |
 | 05 | 1 | #73–#78 | `feat: push, pull and bootstrap` | planned |
 | 06 | 1 | — | `feat: change stream over server-sent events` | planned |
@@ -134,3 +134,41 @@ Notes:
     - rust-version is 1.95, not Blotter's 1.88: rusqlite_migration 2.6.0 (via blotter-core)
       needs 1.95. Blotter's own rust-version is understated; worth fixing there in 16a.
     - Phase 0's Linux check is CI for now; the WSL run comes with Phase 2 (D-S14).
+
+### #03 — Data directory, server state and hello            [status: committed — hash in the next entry]
+Phase: 1
+Needs: Blotter #73-#79 (pinned at aa31b69)
+Message:
+    feat: data dir, server state store and hello
+
+    The server now opens a data directory (--data-dir or
+    BLOTTER_SYNC_DATA_DIR; by default %ProgramData%\Blotter Sync on
+    Windows, ~/.local/share/blotter-sync on Linux, mode 0700 there) with
+    two databases: the canonical planner, blotter.db, opened through
+    blotter-core like the app's and set to the server role so it also
+    captures what the server owns; and server.db, the server's own state
+    with its own migrations, starting with its id and epoch.
+
+    GET /v1/hello answers with the server id, versions (Blotter Sync, the
+    core's Blotter version, sync protocol and schema) and epoch. The API
+    module defines the typed refusals every endpoint will use (version
+    mismatches carry the server's versions); the envelopes move into
+    blotter-core::sync once the app has a client (Blotter #80).
+    Handlers run database work on the blocking pool.
+
+    blotter-core moves from the v1.2.0 tag to Blotter aa31b69, which has
+    the sync module. #02 is 359e5d1.
+Files:
+    A  src/api.rs, src/config.rs, src/server.rs, src/store.rs, migrations/0001_meta.sql
+    M  src/lib.rs, src/main.rs, Cargo.toml, Cargo.lock, README.md
+    M  .claude/COMMITS.md
+Test steps:
+    - cargo fmt --check, cargo clippy --all-targets -D warnings → clean
+    - cargo test → 8 passed (data dir, state identity and epochs, both databases with the
+      server role, hello)
+    - Live on Windows: blotter-sync --data-dir <scratch> serve → hello answers protocol 1,
+      schema 1, an epoch; blotter.db (migrated to 14) and server.db appear
+Notes:
+    - Windows: the data directory keeps %ProgramData%'s default permissions for now; an
+      owner-only ACL (roadmap §5.4) comes with the native install docs (Phase 2).
+    - The planner's days follow its synced timezone setting; UTC until a device sets one.

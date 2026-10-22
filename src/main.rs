@@ -1,9 +1,13 @@
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
-use blotter_sync::{DEFAULT_PORT, VERSION, router};
+use blotter_sync::server::Server;
+use blotter_sync::{DEFAULT_PORT, VERSION, config, router};
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
+
+type Failure = Box<dyn std::error::Error>;
 
 #[derive(Parser)]
 #[command(
@@ -12,6 +16,10 @@ use tracing_subscriber::EnvFilter;
     about = "Keeps every Blotter desktop's planner in sync"
 )]
 struct Cli {
+    /// Where the planner and the server's state are kept.
+    #[arg(long, global = true, env = "BLOTTER_SYNC_DATA_DIR")]
+    data_dir: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -38,8 +46,9 @@ async fn main() -> ExitCode {
         .init();
 
     let cli = Cli::parse();
+    let data_dir = cli.data_dir.unwrap_or_else(config::default_data_dir);
     let result = match cli.command.unwrap_or(Command::Serve(ServeArgs::default())) {
-        Command::Serve(args) => serve(args).await,
+        Command::Serve(args) => serve(&data_dir, args).await,
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -50,15 +59,17 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn serve(args: ServeArgs) -> std::io::Result<()> {
+async fn serve(data_dir: &std::path::Path, args: ServeArgs) -> Result<(), Failure> {
+    let server = Server::open(data_dir)?;
     let addr = args
         .listen
         .unwrap_or_else(|| SocketAddr::from(([0, 0, 0, 0], DEFAULT_PORT)));
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!(version = VERSION, %addr, "blotter-sync listening");
-    axum::serve(listener, router())
+    tracing::info!(version = VERSION, %addr, data = %data_dir.display(), "blotter-sync listening");
+    axum::serve(listener, router(server.shared()))
         .with_graceful_shutdown(shutdown_signal())
-        .await
+        .await?;
+    Ok(())
 }
 
 /// Resolves on Ctrl+C everywhere, and on SIGTERM on Unix (docker stop, systemd).
