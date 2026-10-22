@@ -2,10 +2,10 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use blotter_sync::auth;
 use blotter_sync::server::Server;
 use blotter_sync::store::Store;
 use blotter_sync::{DEFAULT_PORT, VERSION, config, router};
+use blotter_sync::{auth, duties};
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
@@ -46,6 +46,9 @@ struct ServeArgs {
     /// Address and port to listen on.
     #[arg(long, env = "BLOTTER_SYNC_LISTEN")]
     listen: Option<SocketAddr>,
+    /// Daily backups of the planner to keep (manual snapshots are always kept).
+    #[arg(long, env = "BLOTTER_SYNC_KEEP_BACKUPS")]
+    keep_backups: Option<u32>,
 }
 
 #[tokio::main]
@@ -75,12 +78,22 @@ async fn main() -> ExitCode {
 
 async fn serve(data_dir: &Path, args: ServeArgs) -> Result<(), Failure> {
     let server = Server::open(data_dir)?;
+    if let Some(keep) = args.keep_backups {
+        blotter_core::store::settings::set(
+            server.planner.db().conn(),
+            blotter_core::settings::KEY_SNAPSHOT_KEEP,
+            &keep,
+            chrono::Utc::now(),
+        )?;
+    }
+    let shared = server.shared();
+    tokio::spawn(duties::run(shared.clone()));
     let addr = args
         .listen
         .unwrap_or_else(|| SocketAddr::from(([0, 0, 0, 0], DEFAULT_PORT)));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(version = VERSION, %addr, data = %data_dir.display(), "blotter-sync listening");
-    let app = router(server.shared()).into_make_service_with_connect_info::<SocketAddr>();
+    let app = router(shared).into_make_service_with_connect_info::<SocketAddr>();
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use blotter_core::sync::capture::{self, Role};
+use blotter_core::time::{Clock, SystemClock};
 use blotter_core::{Database, Planner};
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
@@ -29,8 +30,12 @@ pub enum OpenError {
 pub struct Server {
     pub planner: Planner,
     pub store: Store,
+    /// The planner's file, where its snapshots go beside it; none in memory.
+    pub planner_path: Option<PathBuf>,
     /// The newest seq and the epoch, for the change stream.
     notices: watch::Sender<Notice>,
+    /// The local days the once-a-day duties last ran (crate::duties).
+    pub(crate) days: crate::duties::Days,
 }
 
 /// What the change stream tells devices: pull now (from `seq`), or, when
@@ -50,22 +55,38 @@ impl Server {
     pub fn open(dir: &Path) -> Result<Self, OpenError> {
         prepare_data_dir(dir).map_err(|e| OpenError::DataDir(dir.to_owned(), e))?;
         let store = Store::open(&dir.join(STATE_FILE))?;
-        let db = Database::open(&dir.join(PLANNER_FILE))?;
-        Self::with(db, store)
+        let path = dir.join(PLANNER_FILE);
+        let db = Database::open(&path)?;
+        Self::with(db, store, Some(path), Box::new(SystemClock))
     }
 
     /// A server held in memory, for tests.
     pub fn open_in_memory() -> Result<Self, OpenError> {
-        Self::with(Database::open_in_memory()?, Store::open_in_memory()?)
+        Self::open_in_memory_at(Box::new(SystemClock))
     }
 
-    fn with(mut db: Database, store: Store) -> Result<Self, OpenError> {
+    /// A server held in memory whose planner reads time from `clock`.
+    pub fn open_in_memory_at(clock: Box<dyn Clock>) -> Result<Self, OpenError> {
+        Self::with(
+            Database::open_in_memory()?,
+            Store::open_in_memory()?,
+            None,
+            clock,
+        )
+    }
+
+    fn with(
+        mut db: Database,
+        store: Store,
+        planner_path: Option<PathBuf>,
+        clock: Box<dyn Clock>,
+    ) -> Result<Self, OpenError> {
         // The server also captures what it owns (fetch status, the event
         // cache, rollover bookkeeping), so devices receive it.
         capture::set_role(db.conn_mut(), Role::Server)?;
         // The planner's own `timezone` setting (synced from the devices)
         // decides days; UTC only until one has been set.
-        let planner = Planner::new(db, chrono_tz::UTC);
+        let planner = Planner::with_clock(db, chrono_tz::UTC, clock);
         let notice = Notice {
             seq: crate::changes::current_seq(&store)?,
             epoch: store.meta()?.epoch,
@@ -74,7 +95,9 @@ impl Server {
         Ok(Self {
             planner,
             store,
+            planner_path,
             notices,
+            days: Default::default(),
         })
     }
 

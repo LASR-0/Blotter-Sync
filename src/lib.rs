@@ -9,6 +9,7 @@ pub mod api;
 pub mod auth;
 pub mod changes;
 pub mod config;
+pub mod duties;
 pub mod routes;
 pub mod server;
 pub mod store;

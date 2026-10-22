@@ -40,6 +40,7 @@ blotter-sync revoke Laptop     # disconnect a device by name or id
 |---|---|---|
 | Listen address | `--listen` | `BLOTTER_SYNC_LISTEN` |
 | Data directory | `--data-dir` | `BLOTTER_SYNC_DATA_DIR` |
+| Daily backups kept | `--keep-backups` | `BLOTTER_SYNC_KEEP_BACKUPS` (default 20) |
 | Log filter | | `BLOTTER_SYNC_LOG` (e.g. `debug`) |
 
 The default port is **7458**. The data directory holds the canonical planner (`blotter.db`) and the server's own state (`server.db`); by default it is `%ProgramData%\Blotter Sync` on Windows and `~/.local/share/blotter-sync` on Linux (`$XDG_DATA_HOME` if set).

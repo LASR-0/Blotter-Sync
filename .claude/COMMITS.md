@@ -47,8 +47,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | 03 | 1 | #73 | `feat: data dir, server state store and hello` | committed `0b7d2ba` |
 | 04 | 1 | #73 | `feat: pairing, device tokens, revocation and the admin CLI` | committed `a680b4a` |
 | 05 | 1 | #73–#78 | `feat: push, pull and bootstrap` | committed `8869958` |
-| 06 | 1 | — | `feat: change stream over server-sent events` | committed (hash in the next entry) |
-| 07 | 1 | #79 | `feat: headless rollover, subscriptions, holidays and backups` | planned |
+| 06 | 1 | — | `feat: change stream over server-sent events` | committed `0349037` |
+| 07 | 1 | #79 | `feat: headless rollover, subscriptions, holidays and backups` | committed (hash in the next entry) |
 | 08 | 1 | — | `feat: snapshots, restore and import with epochs` | planned |
 | 09 | 1 | — | `feat: read-only status page` | planned |
 | 10 | 1 | — | `test: two replicas syncing over HTTP` | planned |
@@ -296,3 +296,51 @@ Test steps:
 Notes:
     - A stream opened before its device was revoked keeps running until it reconnects;
       nothing flows through it but seqs, and pull refuses the revoked token.
+
+### #07 — Headless duties            [status: committed — hash in the next entry]
+Phase: 1
+Needs: Blotter #79
+Message:
+    feat: headless rollover, subscriptions, holidays and backups
+
+    The planner's automatic duties now run on the server (D-S2), every
+    minute from five seconds after start, through blotter-core as the
+    system actor:
+
+    - the day's rollover, once a day after its time, in the planner's
+      synced time zone;
+    - pruning holidays that have ended, once a day;
+    - public-holiday upkeep: next year's fetched from Nager.Date when due
+      (one try a day, so being offline doesn't retry every minute) and
+      imported;
+    - subscription refreshes: every due calendar fetched and recorded,
+      its events and fetch status captured as server-owned data;
+    - the daily backup of the canonical planner, into snapshots/ beside
+      it, keeping --keep-backups (BLOTTER_SYNC_KEEP_BACKUPS, default 20).
+
+    A tick does the database work under the lock and says what to fetch;
+    fetching (reqwest with rustls, 60 s timeout, 20 MB cap) happens
+    outside it; then the results go in. Everything a duty changes goes
+    into the change log and out on the change stream, like a device's
+    push. A failing duty is logged and the others carry on. #06 is
+    0349037.
+Files:
+    A  src/duties.rs
+    M  src/server.rs, src/main.rs, src/lib.rs, Cargo.toml, Cargo.lock (reqwest)
+    M  README.md, .claude/COMMITS.md
+Test steps:
+    - cargo fmt --check, cargo clippy --all-targets -D warnings → clean
+    - cargo test → 36 passed; new: at a fixed 10:00, yesterday's task goes back to the
+      Inbox and the item and last_rollover_date reach the log, and not again that day; an
+      ended holiday is pruned and its tombstone logged; public holidays due once a day,
+      imported from an answer, then not due; a calendar from a local HTTP server fetched,
+      1 event and its fetch status logged, not due again for an hour; an unreachable
+      calendar records "couldn't connect"; one daily backup beside the planner however
+      many ticks
+    - Live on Windows: serve --keep-backups 7 → "daily backup taken" five seconds in,
+      blotter-<stamp>-daily.db in snapshots/
+Notes:
+    - rustls uses aws-lc-rs, which builds here on Windows; check its arm64 cross-build in
+      Phase 2 (ring is the fallback).
+    - The Nager.Date fetch itself is covered by Blotter's live test (#79); here the import
+      runs from a canned answer.
