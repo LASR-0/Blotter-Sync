@@ -49,8 +49,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | 05 | 1 | #73–#78 | `feat: push, pull and bootstrap` | committed `8869958` |
 | 06 | 1 | — | `feat: change stream over server-sent events` | committed `0349037` |
 | 07 | 1 | #79 | `feat: headless rollover, subscriptions, holidays and backups` | committed `25129d6` |
-| 08 | 1 | — | `feat: snapshots, restore and import with epochs` | committed (hash in the next entry) |
-| 09 | 1 | — | `feat: read-only status page` | planned |
+| 08 | 1 | — | `feat: snapshots, restore and import with epochs` | committed `cf84f15` |
+| 09 | 1 | — | `feat: read-only status page` | committed (hash in the next entry) |
 | 10 | 1 | — | `test: two replicas syncing over HTTP` | planned |
 | 11 | 1 | — | `build: Dockerfile, non-root and read-only` | planned |
 | 12 | 2 | — | `ci: multi-arch image and Linux and Windows binaries on release` | planned |
@@ -384,3 +384,32 @@ Test steps:
       change stream shows the new epoch, and hello agrees
 Notes:
     - In Blotter, Settings → Snapshots in Home server mode uses these endpoints (#84).
+
+### #09 — Read-only status page            [status: committed — hash in the next entry]
+Phase: 1
+Message:
+    feat: read-only status page
+
+    GET / shows what the server is and who syncs with it (roadmap §5.1):
+    Blotter Sync's version and the core's, the sync protocol and schema,
+    the server id and epoch, how many changes are logged, the latest
+    backup, whether a pairing code is open, and each device with when it
+    paired, when it was last seen and its status (syncing, disconnected,
+    or a clock running ahead of the server's). No actions and no tokens;
+    device names are escaped. Plain server-rendered HTML in the Blotter
+    palette, light and dark from the system, refreshing every minute; the
+    details stack on narrow screens. #08 is cf84f15.
+Files:
+    A  src/status.rs
+    M  src/routes.rs, src/lib.rs
+    M  .claude/COMMITS.md
+Test steps:
+    - cargo fmt --check, cargo clippy --all-targets -D warnings → clean
+    - cargo test → 41 passed; new: an empty server says how to pair; a device named
+      "<b>Luke's</b> laptop" shows escaped, its token nowhere on the page; times read
+      "2026-10-22 03:03 UTC"
+    - Looked at in headless Edge (a paired device, a daily backup, a code open): light at
+      900 px, dark at 600 and 900 px; nothing overflows
+Notes:
+    - Headless Edge won't go below ~500 px wide, so phone width wasn't seen; the details
+      list stacks under 520 px and the device table scrolls inside its card.

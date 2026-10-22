@@ -13,6 +13,7 @@ pub mod config;
 pub mod duties;
 pub mod routes;
 pub mod server;
+pub mod status;
 pub mod store;
 
 pub use routes::router;

@@ -24,6 +24,8 @@ use crate::api::{ApiError, ErrorBody, ErrorCode, HEADER_PROTOCOL, HEADER_SCHEMA,
 use crate::auth::{self, PairRequest, Paired};
 use crate::changes::{self, Bootstrap, PullResponse, PushRequest, PushResponse};
 use crate::server::{self, Shared};
+use crate::status;
+use axum::response::Html;
 
 /// Attempts allowed per address per window, for pairing and for failed
 /// authentication.
@@ -87,6 +89,7 @@ pub fn router(server: Shared) -> Router {
         limits: Arc::default(),
     };
     Router::new()
+        .route("/", get(status_page))
         .route("/v1/hello", get(hello))
         .route("/v1/pair", post(pair))
         .route("/v1/devices/self", delete(disconnect))
@@ -335,6 +338,12 @@ async fn import(
     server::with(&app.server, move |s| admin::import(s, &export))
         .await
         .map(Json)
+}
+
+async fn status_page(State(app): State<App>) -> Result<Html<String>, ApiError> {
+    server::with(&app.server, |s| status::render(s))
+        .await
+        .map(Html)
 }
 
 #[cfg(test)]
