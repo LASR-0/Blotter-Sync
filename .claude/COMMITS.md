@@ -42,8 +42,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | # | Phase | Needs (Blotter) | Planned message | Status |
 |---|---|---|---|---|
 | 01 | — | — | `docs: Blotter Sync plan` | committed `d2b0f9b`, pushed |
-| 01a | — | — | `docs: confirm the sync schema gate and the blotter-sync name` | committed (hash in the next entry) |
-| 02 | 0 | — | `chore: scaffold the blotter-sync package, lints and CI on Windows and Linux` | planned |
+| 01a | — | — | `docs: confirm the sync schema gate and the blotter-sync name` | committed `857bdae` |
+| 02 | 0 | — | `chore: scaffold the blotter-sync package, lints and CI on Windows and Linux` | committed (hash in the next entry) |
 | 03 | 1 | #73 | `feat: data dir, server state store and hello` | planned |
 | 04 | 1 | #73 | `feat: pairing, device tokens, revocation and the admin CLI` | planned |
 | 05 | 1 | #73–#78 | `feat: push, pull and bootstrap` | planned |
@@ -97,3 +97,40 @@ Files:
     M  .claude/server-roadmap.md, .claude/COMMITS.md
 Test steps:
     - none (docs only)
+
+### #02 — Scaffold, lints and CI            [status: committed — hash in the next entry]
+Phase: 0
+Message:
+    chore: scaffold the blotter-sync package, lints and CI on Windows and Linux
+
+    One package building the blotter-sync binary: axum on tokio, clap for
+    the CLI (serve, the default), tracing to stdout (BLOTTER_SYNC_LOG).
+    GET /v1/hello answers with the server's version and the Blotter
+    release its core comes from; it grows pairing, epoch and the sync
+    protocol and schema as they land. Default port 7458 (no common
+    clash). Graceful shutdown on Ctrl+C, and on SIGTERM on Unix.
+
+    blotter-core is a git dependency pinned to Blotter v1.2.0 until 1.2.1
+    has the sync module; a git-ignored .cargo/config.toml can patch it to
+    ../Blotter for local work (README). Lints, clippy.toml, rustfmt.toml,
+    .gitattributes and the MIT licence match Blotter's. CI runs fmt,
+    clippy -D warnings and tests on windows-latest and ubuntu-latest.
+    #01a is 857bdae.
+Files:
+    A  Cargo.toml, Cargo.lock, src/lib.rs, src/main.rs
+    A  .github/workflows/ci.yml, .gitattributes, .gitignore, clippy.toml, rustfmt.toml
+    A  LICENSE, README.md
+    M  .claude/server-roadmap.md   (default port), .claude/COMMITS.md
+Test steps:
+    - cargo fmt --all --check → clean
+    - cargo clippy --all-targets --locked -- -D warnings → clean
+    - cargo test --locked → 2 passed (hello, unknown path 404)
+    - cargo run -- serve --listen 127.0.0.1:7458, then curl /v1/hello →
+      {"name":"blotter-sync","version":"0.1.0","blotter_core":"1.2.0"}  (checked on Windows)
+    - With the .cargo/config.toml patch, cargo tree -i blotter-core → the ../Blotter path;
+      without it → the v1.2.0 tag
+    - Pending: CI green on both runners after Luke pushes
+Notes:
+    - rust-version is 1.95, not Blotter's 1.88: rusqlite_migration 2.6.0 (via blotter-core)
+      needs 1.95. Blotter's own rust-version is understated; worth fixing there in 16a.
+    - Phase 0's Linux check is CI for now; the WSL run comes with Phase 2 (D-S14).

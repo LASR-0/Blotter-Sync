@@ -1,0 +1,38 @@
+[package]
+name = "blotter-sync"
+description = "Blotter Sync: a headless Blotter that keeps every desktop's planner in sync."
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/LASR-0/Blotter-Sync"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+axum = "0.8.9"
+# Pinned to a Blotter release; a local .cargo/config.toml can point it at
+# ../Blotter during development (README).
+blotter-core = { git = "https://github.com/LASR-0/Blotter.git", tag = "v1.2.0" }
+clap = { version = "4.6.7", features = ["derive", "env"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+
+[dev-dependencies]
+http-body-util = "0.1.5"
+tower = { version = "0.5.3", features = ["util"] }

@@ -1,0 +1,18 @@
+# Rust
+target/
+
+# Local development override pointing blotter-core at ../Blotter (see README)
+.cargo/config.toml
+
+# Server data from local runs
+/data/
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code local state (the roadmap and ledger stay tracked)
+.claude/settings.local.json

@@ -94,7 +94,7 @@ The server merges every push with the same function the devices use, so all repl
   - `blotter.db`, the canonical planner, opened through `blotter-core` exactly as the app opens it.
   - Server-only state (devices, token hashes, pairing codes, the change log with seqs, the epoch) in its own file with its own migrations, so the core's migration list stays the app's.
   - Default location: `/data` in Docker; `$XDG_DATA_HOME/blotter-sync` (falling back to `~/.local/share/blotter-sync`) on Linux; `%ProgramData%\Blotter Sync` on Windows. Overridden with `--data-dir` or `BLOTTER_SYNC_DATA_DIR`.
-- **Configuration:** listen address and port, data dir, backup count and log level, from flags or environment variables (Docker-friendly), no config file needed.
+- **Configuration:** listen address and port (default **7458**), data dir, backup count and log level, from flags or environment variables (Docker-friendly), no config file needed.
 - **Headless duties** run on a timer, through the core's operations as actor `system` (D-S2): rollover in the user's synced `timezone` at `rollover_time`; subscription refresh (the server needs outbound internet); holiday pruning; public-holiday upkeep; daily backups of the canonical planner (the core's snapshot code, kept count configurable).
 - **Admin CLI** in the same binary, run directly or with `docker exec`: `pair` (prints a pairing code), `devices` (list), `revoke <device>`, `snapshot`, `restore <id>`, `status`. It works against the data dir while the server runs.
 - **A read-only status page** at `/`: version, sync protocol and schema, epoch, devices and their last sync, clock-skew warnings. No admin actions on the web in 1.0.0; the HA add-on adds an Ingress page for pairing (Phase 3).
