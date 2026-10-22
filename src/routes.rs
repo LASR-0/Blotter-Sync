@@ -8,9 +8,13 @@ use std::time::{Duration, Instant};
 use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRequestParts, Query, State};
 use axum::http::HeaderMap;
 use axum::http::request::Parts;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
+use std::convert::Infallible;
+use tokio_stream::wrappers::WatchStream;
+use tokio_stream::{Stream, StreamExt};
 use tower_http::compression::CompressionLayer;
 use tower_http::decompression::RequestDecompressionLayer;
 
@@ -87,6 +91,7 @@ pub fn router(server: Shared) -> Router {
         .route("/v1/push", post(push))
         .route("/v1/pull", get(pull))
         .route("/v1/bootstrap", get(bootstrap))
+        .route("/v1/events", get(events))
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .layer(RequestDecompressionLayer::new())
         .layer(CompressionLayer::new())
@@ -258,6 +263,25 @@ async fn pull(
 async fn bootstrap(State(app): State<App>, _device: Device) -> Result<Json<Bootstrap>, ApiError> {
     let out = server::with(&app.server, |s| changes::bootstrap(s)).await?;
     Ok(Json(out))
+}
+
+/// How often a quiet stream sends a comment, so proxies keep it open.
+const KEEP_ALIVE: Duration = Duration::from_secs(20);
+
+/// The change stream: the newest seq and epoch now, then again whenever
+/// either moves. It says only "pull now"; the rows come from `pull`.
+async fn events(
+    State(app): State<App>,
+    _device: Device,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    let notices = server::with(&app.server, |s| Ok(s.notices())).await?;
+    let stream = WatchStream::new(notices).map(|notice| {
+        Ok(Event::default()
+            .event("seq")
+            .json_data(&notice)
+            .unwrap_or_else(|_| Event::default().event("seq")))
+    });
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(KEEP_ALIVE)))
 }
 
 #[cfg(test)]

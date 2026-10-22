@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use blotter_core::sync::capture::{self, Role};
 use blotter_core::{Database, Planner};
+use serde::{Deserialize, Serialize};
+use tokio::sync::watch;
 
 use crate::api::{ApiError, Hello, Versions};
 use crate::config::{PLANNER_FILE, STATE_FILE, prepare_data_dir};
@@ -18,6 +20,8 @@ pub enum OpenError {
     Planner(#[from] blotter_core::CoreError),
     #[error("the server state: {0}")]
     Store(#[from] store::StoreError),
+    #[error("the change log: {0}")]
+    Log(#[from] ApiError),
 }
 
 /// One server: its planner (a replica like any device's, with the server
@@ -25,6 +29,16 @@ pub enum OpenError {
 pub struct Server {
     pub planner: Planner,
     pub store: Store,
+    /// The newest seq and the epoch, for the change stream.
+    notices: watch::Sender<Notice>,
+}
+
+/// What the change stream tells devices: pull now (from `seq`), or, when
+/// the epoch moved, bootstrap again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Notice {
+    pub seq: i64,
+    pub epoch: String,
 }
 
 /// Shared by every request. Database work is short; handlers run it on the
@@ -52,7 +66,33 @@ impl Server {
         // The planner's own `timezone` setting (synced from the devices)
         // decides days; UTC only until one has been set.
         let planner = Planner::new(db, chrono_tz::UTC);
-        Ok(Self { planner, store })
+        let notice = Notice {
+            seq: crate::changes::current_seq(&store)?,
+            epoch: store.meta()?.epoch,
+        };
+        let (notices, _) = watch::channel(notice);
+        Ok(Self {
+            planner,
+            store,
+            notices,
+        })
+    }
+
+    /// Tells every open change stream about the newest seq and epoch.
+    pub fn announce(&self, seq: i64) -> Result<(), ApiError> {
+        let epoch = self.store.meta().map_err(ApiError::internal)?.epoch;
+        self.notices.send_if_modified(|n| {
+            let next = Notice { seq, epoch };
+            let changed = *n != next;
+            *n = next;
+            changed
+        });
+        Ok(())
+    }
+
+    /// A receiver for the change stream.
+    pub fn notices(&self) -> watch::Receiver<Notice> {
+        self.notices.subscribe()
     }
 
     pub fn shared(self) -> Shared {

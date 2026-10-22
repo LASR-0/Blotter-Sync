@@ -110,6 +110,7 @@ pub fn record_local(server: &mut Server, now: Instant) -> Result<i64, ApiError> 
     let (rows, pending) = state::outbox(server.planner.db().conn()).map_err(ApiError::internal)?;
     let seq = append(&server.store, &rows, None, now)?;
     capture::acknowledge(server.planner.db().conn(), &pending).map_err(ApiError::internal)?;
+    server.announce(seq)?;
     Ok(seq)
 }
 

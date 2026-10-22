@@ -46,8 +46,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | 02 | 0 | — | `chore: scaffold the blotter-sync package, lints and CI on Windows and Linux` | committed `359e5d1` |
 | 03 | 1 | #73 | `feat: data dir, server state store and hello` | committed `0b7d2ba` |
 | 04 | 1 | #73 | `feat: pairing, device tokens, revocation and the admin CLI` | committed `a680b4a` |
-| 05 | 1 | #73–#78 | `feat: push, pull and bootstrap` | committed (hash in the next entry) |
-| 06 | 1 | — | `feat: change stream over server-sent events` | planned |
+| 05 | 1 | #73–#78 | `feat: push, pull and bootstrap` | committed `8869958` |
+| 06 | 1 | — | `feat: change stream over server-sent events` | committed (hash in the next entry) |
 | 07 | 1 | #79 | `feat: headless rollover, subscriptions, holidays and backups` | planned |
 | 08 | 1 | — | `feat: snapshots, restore and import with epochs` | planned |
 | 09 | 1 | — | `feat: read-only status page` | planned |
@@ -266,3 +266,33 @@ Test steps:
 Notes:
     - The envelopes (PushRequest and the rest) are this repo's until Blotter #80 moves them
       into blotter-core::sync.
+
+### #06 — Change stream over server-sent events            [status: committed — hash in the next entry]
+Phase: 1
+Message:
+    feat: change stream over server-sent events
+
+    GET /v1/events (an authenticated device) streams `seq` events, each
+    {"seq", "epoch"}: the current values as soon as it connects, then
+    again whenever the server logs a change or the epoch moves. A notice
+    only says "pull now" (or, with a new epoch, "bootstrap again"); rows
+    always come from pull. Quiet streams send a comment every 20 s so
+    proxies keep them open, and the stream is never compressed, so
+    nothing buffers it.
+
+    The server keeps the newest seq and epoch in a watch channel that the
+    change log announces to after every append. #05 is 8869958.
+Files:
+    M  src/server.rs, src/changes.rs, src/routes.rs, src/sync_tests.rs
+    M  Cargo.toml, Cargo.lock (tokio sync and time, tokio-stream)
+    M  .claude/COMMITS.md
+Test steps:
+    - cargo fmt --check, cargo clippy --all-targets -D warnings → clean
+    - cargo test → 30 passed; new: a device's stream opens with its bootstrap's seq and
+      epoch (text/event-stream, no content-encoding even when gzip is accepted), and gives
+      the new seq when another device pushes; the stream needs a token
+    - Live on Windows: curl -N on /v1/events, then a push from another request → two
+      events, seq 0 then 1, as the push lands
+Notes:
+    - A stream opened before its device was revoked keeps running until it reconnects;
+      nothing flows through it but seqs, and pull refuses the revoked token.

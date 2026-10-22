@@ -350,3 +350,65 @@ async fn pulling_needs_a_token() {
     let (status, _) = call(&app, "GET", "/v1/bootstrap", "nope", None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+/// The next `seq` notice on a change stream, within a few seconds.
+async fn next_notice(body: &mut Body) -> Value {
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), body.frame())
+            .await
+            .expect("no notice within 5 s")
+            .expect("the stream ended")
+            .unwrap();
+        let Ok(data) = frame.into_data() else {
+            continue;
+        };
+        let text = String::from_utf8(data.to_vec()).unwrap();
+        if let Some(json) = text
+            .lines()
+            .find_map(|l| l.strip_prefix("data:"))
+            .filter(|_| text.contains("event: seq"))
+        {
+            return serde_json::from_str(json.trim()).unwrap();
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_change_stream_says_when_to_pull() {
+    let (app, shared) = world();
+    let mut laptop = join(&app, &shared, "Laptop").await;
+    let desktop = join(&app, &shared, "Desktop").await;
+
+    let req = Request::get("/v1/events")
+        .header(HEADER_PROTOCOL, Versions::SERVER.protocol)
+        .header(HEADER_SCHEMA, Versions::SERVER.schema)
+        .header("authorization", format!("Bearer {}", desktop.token))
+        .header("accept-encoding", "gzip")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()["content-type"], "text/event-stream");
+    assert!(
+        res.headers().get("content-encoding").is_none(),
+        "never compressed or buffered"
+    );
+    let mut body = res.into_body();
+
+    let first = next_notice(&mut body).await;
+    assert_eq!(first["seq"], desktop.seq);
+    assert_eq!(first["epoch"], desktop.epoch);
+
+    laptop.add_item("I1", "Buy milk");
+    let pushed = laptop.push(&app).await;
+    let next = next_notice(&mut body).await;
+    assert_eq!(next["seq"], pushed.seq);
+    assert!(pushed.seq > desktop.seq);
+}
+
+#[tokio::test]
+async fn the_change_stream_needs_a_token() {
+    let (app, _) = world();
+    let (status, _) = call(&app, "GET", "/v1/events", "nope", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
