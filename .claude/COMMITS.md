@@ -45,8 +45,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | 01a | — | — | `docs: confirm the sync schema gate and the blotter-sync name` | committed `857bdae` |
 | 02 | 0 | — | `chore: scaffold the blotter-sync package, lints and CI on Windows and Linux` | committed `359e5d1` |
 | 03 | 1 | #73 | `feat: data dir, server state store and hello` | committed `0b7d2ba` |
-| 04 | 1 | #73 | `feat: pairing, device tokens, revocation and the admin CLI` | committed (hash in the next entry) |
-| 05 | 1 | #73–#78 | `feat: push, pull and bootstrap` | planned |
+| 04 | 1 | #73 | `feat: pairing, device tokens, revocation and the admin CLI` | committed `a680b4a` |
+| 05 | 1 | #73–#78 | `feat: push, pull and bootstrap` | committed (hash in the next entry) |
 | 06 | 1 | — | `feat: change stream over server-sent events` | planned |
 | 07 | 1 | #79 | `feat: headless rollover, subscriptions, holidays and backups` | planned |
 | 08 | 1 | — | `feat: snapshots, restore and import with epochs` | planned |
@@ -219,3 +219,50 @@ Test steps:
 Notes:
     - Behind Caddy every client shares the proxy's address for the limit; fine for one
       household, noted for the deploy docs.
+
+### #05 — Push, pull and bootstrap            [status: committed — hash in the next entry]
+Phase: 1
+Needs: Blotter #73-#78
+Message:
+    feat: push, pull and bootstrap
+
+    The sync exchanges (roadmap §5.2), on blotter-core's RowState and
+    merge.
+
+    - POST /v1/push {epoch, batch_id, rows}: merges the rows into the
+      canonical planner, logs every row the merge changed (including
+      tombstones it worked out, and the server's own captured changes),
+      and answers {seq, rejected}. A batch id seen before from that
+      device gets its first answer back and changes nothing. A push from
+      a clock more than 5 minutes ahead of the server's is noted on the
+      device (shown by `blotter-sync devices`).
+    - GET /v1/pull?epoch&since: the log after the device's cursor, 500
+      rows a page with `more`, and the seq to ask from next.
+    - GET /v1/bootstrap: every row the server holds, tombstones included,
+      with the epoch and the seq to pull from afterwards.
+    - The change log (server.db migration 3) keeps one entry per row: a
+      new entry for a row replaces its older one, since each is the
+      row's whole state, so a device that's behind still gets the latest
+      and the log stays as large as the planner.
+    - A stale epoch, or a cursor past the end of the log, gets
+      stale_epoch (410): bootstrap again.
+    - Bodies up to 32 MB (a first push carries a whole planner); gzip
+      both ways.
+    #04 is a680b4a.
+Files:
+    A  src/changes.rs, src/sync_tests.rs, migrations/0003_log.sql
+    M  src/routes.rs, src/lib.rs, src/store.rs, Cargo.toml, Cargo.lock (tower-http)
+    M  .claude/COMMITS.md
+Test steps:
+    - cargo fmt --check, cargo clippy --all-targets -D warnings → clean
+    - cargo test → 28 passed; new, with blotter-core replicas through the router: two
+      devices converge (different groups both survive) and match the server row for row;
+      a resent push answers the same and logs once; a new epoch sends push and pull to
+      bootstrap; a cursor ahead of the log does too; 520 items arrive in pages of 500;
+      refused rows come back in the answer; a clock an hour ahead is noted; pull and
+      bootstrap need a token
+    - Live on Windows: pair, push half a row (refused with its reason, nothing else
+      lost), bootstrap answers gzipped, pull from 0
+Notes:
+    - The envelopes (PushRequest and the rest) are this repo's until Blotter #80 moves them
+      into blotter-core::sync.

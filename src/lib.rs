@@ -7,6 +7,7 @@
 
 pub mod api;
 pub mod auth;
+pub mod changes;
 pub mod config;
 pub mod routes;
 pub mod server;
@@ -19,3 +20,6 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Port the server listens on unless told otherwise.
 pub const DEFAULT_PORT: u16 = 7458;
+
+#[cfg(test)]
+mod sync_tests;

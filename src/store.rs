@@ -10,6 +10,7 @@ use rusqlite_migration::{M, Migrations};
 const MIGRATION_LIST: &[M<'static>] = &[
     M::up(include_str!("../migrations/0001_meta.sql")),
     M::up(include_str!("../migrations/0002_devices.sql")),
+    M::up(include_str!("../migrations/0003_log.sql")),
 ];
 const MIGRATIONS: Migrations<'static> = Migrations::from_slice(MIGRATION_LIST);
 

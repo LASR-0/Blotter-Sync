@@ -5,14 +5,18 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use axum::extract::{ConnectInfo, FromRequestParts, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRequestParts, Query, State};
 use axum::http::HeaderMap;
 use axum::http::request::Parts;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
+use serde::Deserialize;
+use tower_http::compression::CompressionLayer;
+use tower_http::decompression::RequestDecompressionLayer;
 
 use crate::api::{ApiError, ErrorBody, ErrorCode, HEADER_PROTOCOL, HEADER_SCHEMA, Hello, Versions};
 use crate::auth::{self, PairRequest, Paired};
+use crate::changes::{self, Bootstrap, PullResponse, PushRequest, PushResponse};
 use crate::server::{self, Shared};
 
 /// Attempts allowed per address per window, for pairing and for failed
@@ -80,8 +84,17 @@ pub fn router(server: Shared) -> Router {
         .route("/v1/hello", get(hello))
         .route("/v1/pair", post(pair))
         .route("/v1/devices/self", delete(disconnect))
+        .route("/v1/push", post(push))
+        .route("/v1/pull", get(pull))
+        .route("/v1/bootstrap", get(bootstrap))
+        .layer(DefaultBodyLimit::max(MAX_BODY))
+        .layer(RequestDecompressionLayer::new())
+        .layer(CompressionLayer::new())
         .with_state(app)
 }
+
+/// The largest request body: a first push carries a whole planner.
+const MAX_BODY: usize = 32 * 1024 * 1024;
 
 async fn client_ip<S: Send + Sync>(parts: &mut Parts, state: &S) -> Option<IpAddr> {
     ConnectInfo::<SocketAddr>::from_request_parts(parts, state)
@@ -212,6 +225,39 @@ async fn disconnect(State(app): State<App>, device: Device) -> Result<(), ApiErr
     })
     .await?;
     Ok(())
+}
+
+async fn push(
+    State(app): State<App>,
+    device: Device,
+    Json(req): Json<PushRequest>,
+) -> Result<Json<PushResponse>, ApiError> {
+    let out = server::with(&app.server, move |s| {
+        changes::push(s, &device.id, &req, chrono::Utc::now())
+    })
+    .await?;
+    Ok(Json(out))
+}
+
+#[derive(Debug, Deserialize)]
+struct PullQuery {
+    epoch: String,
+    #[serde(default)]
+    since: i64,
+}
+
+async fn pull(
+    State(app): State<App>,
+    _device: Device,
+    Query(q): Query<PullQuery>,
+) -> Result<Json<PullResponse>, ApiError> {
+    let out = server::with(&app.server, move |s| changes::pull(s, &q.epoch, q.since)).await?;
+    Ok(Json(out))
+}
+
+async fn bootstrap(State(app): State<App>, _device: Device) -> Result<Json<Bootstrap>, ApiError> {
+    let out = server::with(&app.server, |s| changes::bootstrap(s)).await?;
+    Ok(Json(out))
 }
 
 #[cfg(test)]
