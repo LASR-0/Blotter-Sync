@@ -51,8 +51,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | 07 | 1 | #79 | `feat: headless rollover, subscriptions, holidays and backups` | committed `25129d6` |
 | 08 | 1 | — | `feat: snapshots, restore and import with epochs` | committed `cf84f15` |
 | 09 | 1 | — | `feat: read-only status page` | committed `8d783a4` |
-| 10 | 1 | — | `test: two replicas syncing over HTTP` | committed (hash in the next entry) |
-| 11 | 1 | — | `build: Dockerfile, non-root and read-only` | planned |
+| 10 | 1 | — | `test: two replicas syncing over HTTP` | committed `42a2699` |
+| 11 | 1 | — | `build: Dockerfile, non-root and read-only` | committed (hash in the next entry); checked in CI, not locally |
 | 12 | 2 | — | `ci: multi-arch image and Linux and Windows binaries on release` | planned |
 | 13 | 2 | — | `docs(deploy): compose profiles, native installs and the compatibility table` | planned |
 | 14 | 2 | #85 | `chore(release): v1.0.0` | planned |
@@ -441,3 +441,31 @@ Notes:
       any device, blocks undoing an earlier edit to it, even in another field group. A
       finer undo (only the fields it would revert) is possible as a Blotter change if
       that's wanted.
+
+### #11 — Dockerfile, non-root and read-only            [status: committed — hash in the next entry]
+Phase: 1
+Message:
+    build: Dockerfile, non-root and read-only
+
+    A two-stage image (roadmap §6): the server is built with cargo
+    --locked in rust:1.98-bookworm, then copied into distroless
+    cc-debian12 running as nonroot (65532), with /data as the volume
+    and SQLite's temporary files kept there so the root filesystem can
+    be mounted read-only. Development is native on Windows, so CI
+    builds and runs the image instead of WSL: a new Docker job checks
+    the image user, starts it with --read-only on a named volume,
+    answers /v1/hello and the status page, runs pair, snapshot and
+    snapshots through docker exec, and keeps its server id in a new
+    container on the same volume. #10 is 42a2699.
+Files:
+    A  Dockerfile, .dockerignore
+    M  .github/workflows/ci.yml (the docker job)
+    M  .claude/COMMITS.md
+Test steps:
+    - The CI "Docker image" job passes on the next push (not run locally: no Docker on
+      the dev machine)
+Notes:
+    - Changes D-S14's "Docker tested in WSL" to "Docker tested in CI" for development;
+      the pre-release live check in WSL (roadmap §7) still stands.
+    - The base tags (rust:1.98-bookworm, distroless cc-debian12:nonroot) are confirmed by
+      that first CI build.

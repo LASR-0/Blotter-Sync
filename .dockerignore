@@ -1,0 +1,9 @@
+target
+.git
+.github
+.claude
+.cargo
+data
+*.db
+*.db-wal
+*.db-shm
