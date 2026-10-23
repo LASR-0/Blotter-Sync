@@ -54,7 +54,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | 10 | 1 | — | `test: two replicas syncing over HTTP` | committed `42a2699` |
 | 11 | 1 | — | `build: Dockerfile, non-root and read-only` | committed `139e752`; checked in CI |
 | 12 | 2 | — | `ci: multi-arch image and Linux and Windows binaries on release` | committed `b1e1e64` |
-| 13 | 2 | — | `docs(deploy): compose profiles, native installs and the compatibility table` | committed (hash in the next entry) |
+| 13 | 2 | — | `docs(deploy): compose profiles, native installs and the compatibility table` | committed `3e92976` |
+| 13a | 2 | — | `fix: rate limits name the client behind a local proxy` | committed (hash in the next entry) |
 | 14 | 2 | #85 | `chore(release): v1.0.0` | planned |
 | 15 | 3 | — | `feat: Home Assistant add-on with an Ingress admin page` | planned (1.1.0, refined after 1.0.0) |
 
@@ -543,3 +544,28 @@ Notes:
       from loopback and private peers only.
     - Gap for Luke: §5.4's owner-only ACL on Windows isn't in the code (unsafe_code is
       denied); the guide gives an icacls command meanwhile.
+
+### #13a — Rate limits behind a local proxy            [status: committed — hash in the next entry]
+Phase: 2
+Message:
+    fix: rate limits name the client behind a local proxy
+
+    Pairing and failed-auth limits counted attempts per peer address,
+    so behind Caddy or Tailscale Serve every device shared the proxy's:
+    ten bad guesses a minute from anyone on the internet locked out
+    every device syncing through it. A request from a loopback,
+    private, link-local or unique-local peer now counts against the
+    last X-Forwarded-For entry, the one that proxy added; anyone
+    else's header is ignored. A LAN client could spoof it, but the LAN
+    is trusted already (D-S5). #13 is 3e92976.
+Files:
+    M  src/routes.rs
+    M  .claude/COMMITS.md
+Test steps:
+    - cargo fmt --check, cargo clippy --all-targets -D warnings → clean
+    - cargo test → 44 unit + 1 integration passed; new: a local proxy names the client
+      (only its own entry counts), an outsider's header is ignored, and a second client
+      behind the same proxy isn't locked out by the first
+Notes:
+    - Caddy sets X-Forwarded-For. Whether Tailscale Serve does is for the live check;
+      without it, its devices still share the sidecar's address, as before.

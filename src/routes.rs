@@ -110,14 +110,48 @@ pub fn router(server: Shared) -> Router {
 const MAX_BODY: usize = 32 * 1024 * 1024;
 
 async fn client_ip<S: Send + Sync>(parts: &mut Parts, state: &S) -> Option<IpAddr> {
-    ConnectInfo::<SocketAddr>::from_request_parts(parts, state)
+    let peer = ConnectInfo::<SocketAddr>::from_request_parts(parts, state)
         .await
-        .ok()
-        .map(|c| c.0.ip())
+        .ok()?
+        .0
+        .ip()
+        .to_canonical();
+    Some(forwarded_for(&parts.headers, peer).unwrap_or(peer))
 }
 
-/// The client's address, when the server knows it (behind a proxy, the
-/// proxy's).
+/// The address a reverse proxy says it is forwarding for: the last entry
+/// of `X-Forwarded-For`, the one the nearest proxy added. Trusted only
+/// from loopback and private peers, where Caddy and Tailscale Serve
+/// connect from, so every device behind a proxy isn't limited as one.
+/// Anyone else's header is ignored.
+fn forwarded_for(headers: &HeaderMap, peer: IpAddr) -> Option<IpAddr> {
+    if !is_local(peer) {
+        return None;
+    }
+    let last = headers
+        .get_all("x-forwarded-for")
+        .iter()
+        .next_back()?
+        .to_str()
+        .ok()?
+        .rsplit(',')
+        .next()?;
+    last.trim()
+        .parse::<IpAddr>()
+        .ok()
+        .map(|ip| ip.to_canonical())
+}
+
+/// Loopback, private, link-local or IPv6 unique-local.
+fn is_local(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local(),
+        IpAddr::V6(v6) => v6.is_loopback() || v6.is_unique_local() || v6.is_unicast_link_local(),
+    }
+}
+
+/// The client's address, when the server knows it: behind a proxy on the
+/// same host or network, the address it forwards for.
 pub struct ClientIp(Option<IpAddr>);
 
 impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
@@ -525,6 +559,68 @@ mod tests {
             assert_eq!(status, StatusCode::UNAUTHORIZED);
             assert_eq!(err["code"], "unauthorized");
         }
+    }
+
+    fn forwarded(value: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert("x-forwarded-for", value.parse().unwrap());
+        h
+    }
+
+    #[test]
+    fn a_local_proxy_names_the_client() {
+        let caddy: IpAddr = "172.18.0.3".parse().unwrap();
+        let client: IpAddr = "203.0.113.9".parse().unwrap();
+        assert_eq!(
+            forwarded_for(&forwarded("203.0.113.9"), caddy),
+            Some(client)
+        );
+        // Only the entry the proxy added counts, not what the client sent.
+        assert_eq!(
+            forwarded_for(&forwarded("10.0.0.1, 203.0.113.9"), caddy),
+            Some(client)
+        );
+        assert_eq!(
+            forwarded_for(&forwarded("203.0.113.9"), "::1".parse().unwrap()),
+            Some(client)
+        );
+        assert_eq!(forwarded_for(&forwarded("nonsense"), caddy), None);
+        assert_eq!(forwarded_for(&HeaderMap::new(), caddy), None);
+    }
+
+    #[test]
+    fn anyone_elses_forwarded_header_is_ignored() {
+        let outsider: IpAddr = "198.51.100.4".parse().unwrap();
+        assert_eq!(forwarded_for(&forwarded("10.0.0.1"), outsider), None);
+        let mapped: IpAddr = "::ffff:198.51.100.4".parse().unwrap();
+        assert_eq!(
+            forwarded_for(&forwarded("10.0.0.1"), mapped.to_canonical()),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn devices_behind_a_proxy_are_limited_one_by_one() {
+        let shared = Server::open_in_memory().unwrap().shared();
+        let app = router(shared.clone())
+            .layer(MockConnectInfo(SocketAddr::from(([172, 18, 0, 3], 5000))));
+        let guess = |from: &str| {
+            let mut req = request("DELETE", "/v1/devices/self", current(), Some("guess"), None);
+            req.headers_mut()
+                .insert("x-forwarded-for", from.parse().unwrap());
+            req
+        };
+        for _ in 0..=LIMIT {
+            send(&app, guess("203.0.113.9")).await;
+        }
+        let (status, _) = send(&app, guess("203.0.113.9")).await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        let (status, _) = send(&app, guess("198.51.100.4")).await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "another client isn't locked out"
+        );
     }
 
     #[tokio::test]
