@@ -1,0 +1,14 @@
+# Used by the caddy profile: HTTPS for BLOTTER_DOMAIN, certificates from
+# Let's Encrypt, proxying to Blotter Sync. Caddy streams the change feed
+# (text/event-stream) without buffering.
+
+{$BLOTTER_DOMAIN} {
+	# The status page lists your devices; show it only to the LAN.
+	@public_status {
+		path /
+		not remote_ip private_ranges
+	}
+	respond @public_status 404
+
+	reverse_proxy blotter-sync:7458
+}

@@ -16,3 +16,6 @@ Thumbs.db
 
 # Claude Code local state (the roadmap and ledger stay tracked)
 .claude/settings.local.json
+
+# Compose settings with secrets (deploy/.env.example is the template)
+deploy/.env

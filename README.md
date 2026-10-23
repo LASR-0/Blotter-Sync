@@ -18,9 +18,9 @@ Blotter 1.2.0 and earlier have no sync.
 
 ## Running
 
-Planned for 1.0.0: a Docker image (`ghcr.io/lasr-0/blotter-sync`, amd64 and arm64) with Compose profiles for LAN, Caddy and Tailscale, and plain binaries for Linux and Windows.
+From 1.0.0: a Docker image (`ghcr.io/lasr-0/blotter-sync`, amd64 and arm64) with Compose profiles for LAN, Tailscale and Caddy, and plain binaries for Linux and Windows on the [releases](https://github.com/LASR-0/Blotter-Sync/releases) page. **[deploy/README.md](deploy/README.md)** walks through each tier, native installs on Linux and Windows, pairing, backups, upgrading and disconnecting a device.
 
-Until then, from source:
+From source:
 
 ```sh
 cargo run -- serve                          # listens on 0.0.0.0:7458

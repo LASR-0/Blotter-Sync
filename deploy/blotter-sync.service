@@ -1,0 +1,37 @@
+# Blotter Sync as a systemd service. See README.md in this folder.
+#
+#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin blotter-sync
+#   sudo install -m 0755 blotter-sync /usr/local/bin/
+#   sudo cp blotter-sync.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now blotter-sync
+
+[Unit]
+Description=Blotter Sync
+Documentation=https://github.com/LASR-0/Blotter-Sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=blotter-sync
+Group=blotter-sync
+# Creates /var/lib/blotter-sync, owned by blotter-sync, mode 0700.
+StateDirectory=blotter-sync
+StateDirectoryMode=0700
+Environment=BLOTTER_SYNC_DATA_DIR=/var/lib/blotter-sync
+Environment=BLOTTER_SYNC_LISTEN=0.0.0.0:7458
+ExecStart=/usr/local/bin/blotter-sync serve
+Restart=on-failure
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

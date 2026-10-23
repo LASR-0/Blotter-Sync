@@ -53,8 +53,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | 09 | 1 | — | `feat: read-only status page` | committed `8d783a4` |
 | 10 | 1 | — | `test: two replicas syncing over HTTP` | committed `42a2699` |
 | 11 | 1 | — | `build: Dockerfile, non-root and read-only` | committed `139e752`; checked in CI |
-| 12 | 2 | — | `ci: multi-arch image and Linux and Windows binaries on release` | committed (hash in the next entry) |
-| 13 | 2 | — | `docs(deploy): compose profiles, native installs and the compatibility table` | planned |
+| 12 | 2 | — | `ci: multi-arch image and Linux and Windows binaries on release` | committed `b1e1e64` |
+| 13 | 2 | — | `docs(deploy): compose profiles, native installs and the compatibility table` | committed (hash in the next entry) |
 | 14 | 2 | #85 | `chore(release): v1.0.0` | planned |
 | 15 | 3 | — | `feat: Home Assistant add-on with an Ingress admin page` | planned (1.1.0, refined after 1.0.0) |
 
@@ -501,3 +501,45 @@ Notes:
       cross toolchain for aws-lc and the bundled SQLite.
     - Mirrors Blotter's release.yml: draft on a tag, artifacts only on a manual run.
     - Action majors checked against their repos' tags on 2026-10-23.
+
+### #13 — Deployment: Compose profiles, native installs            [status: committed — hash in the next entry]
+Phase: 2
+Message:
+    docs(deploy): compose profiles, native installs and the compatibility table
+
+    deploy/ (roadmap §6.2, §6.3): compose.yaml runs the image read-only
+    with all capabilities dropped, data on a volume and the LAN port,
+    plus two profiles that combine: caddy (automatic HTTPS for a domain,
+    the status page hidden from outside the LAN) and tailscale (a
+    sidecar serving https://<name>.<tailnet>.ts.net through Tailscale
+    Serve, userspace networking, state on a volume). .env.example holds
+    the settings, a Caddyfile and tailscale/serve.json the proxies, and
+    blotter-sync.service runs the Linux binary as its own user with
+    /var/lib/blotter-sync at 0700. deploy/README.md walks through each
+    tier, Linux and Windows without Docker (Task Scheduler, firewall,
+    an owner-only ACL), pairing, backups, upgrading and disconnecting
+    a device. CI now parses the Compose file with every profile and
+    validates the Caddyfile. The README links the guide and keeps the
+    compatibility table. #12 is b1e1e64.
+Files:
+    A  deploy/compose.yaml, deploy/.env.example, deploy/Caddyfile,
+       deploy/tailscale/serve.json, deploy/blotter-sync.service, deploy/README.md
+    M  README.md, .gitignore (deploy/.env), .github/workflows/ci.yml
+    M  .claude/COMMITS.md
+Test steps:
+    - CI Docker job: `docker compose config` with both profiles and `caddy validate`
+      pass (not runnable locally: no Docker)
+    - Live checks for #14 (roadmap §7): LAN, then Tailscale and Caddy where reachable;
+      SSE through each proxy
+Notes:
+    - Tailscale checked against tailscale.com/docs/features/containers/docker/docker-params
+      and tailscale-dev/docker-guide-code-examples (serve config with ${TS_CERT_DOMAIN},
+      substituted by the container). The sidecar proxies to blotter-sync:7458 over the
+      Compose network rather than sharing its network namespace, so the profile can be
+      left off; that needs the live check.
+    - Gap for Luke: rate limits key on the peer address, so behind Caddy or Tailscale
+      Serve every device shares the proxy's; ten bad attempts a minute from anyone would
+      lock out every proxied device for that minute. Fix would trust X-Forwarded-For
+      from loopback and private peers only.
+    - Gap for Luke: §5.4's owner-only ACL on Windows isn't in the code (unsafe_code is
+      denied); the guide gives an icacls command meanwhile.
