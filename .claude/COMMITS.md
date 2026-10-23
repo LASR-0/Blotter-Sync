@@ -52,8 +52,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | 08 | 1 | — | `feat: snapshots, restore and import with epochs` | committed `cf84f15` |
 | 09 | 1 | — | `feat: read-only status page` | committed `8d783a4` |
 | 10 | 1 | — | `test: two replicas syncing over HTTP` | committed `42a2699` |
-| 11 | 1 | — | `build: Dockerfile, non-root and read-only` | committed (hash in the next entry); checked in CI, not locally |
-| 12 | 2 | — | `ci: multi-arch image and Linux and Windows binaries on release` | planned |
+| 11 | 1 | — | `build: Dockerfile, non-root and read-only` | committed `139e752`; checked in CI |
+| 12 | 2 | — | `ci: multi-arch image and Linux and Windows binaries on release` | committed (hash in the next entry) |
 | 13 | 2 | — | `docs(deploy): compose profiles, native installs and the compatibility table` | planned |
 | 14 | 2 | #85 | `chore(release): v1.0.0` | planned |
 | 15 | 3 | — | `feat: Home Assistant add-on with an Ingress admin page` | planned (1.1.0, refined after 1.0.0) |
@@ -442,7 +442,7 @@ Notes:
       finer undo (only the fields it would revert) is possible as a Blotter change if
       that's wanted.
 
-### #11 — Dockerfile, non-root and read-only            [status: committed — hash in the next entry]
+### #11 — Dockerfile, non-root and read-only            [status: committed — hash in the next entry; CI Docker job passed]
 Phase: 1
 Message:
     build: Dockerfile, non-root and read-only
@@ -469,3 +469,35 @@ Notes:
       the pre-release live check in WSL (roadmap §7) still stands.
     - The base tags (rust:1.98-bookworm, distroless cc-debian12:nonroot) are confirmed by
       that first CI build.
+
+### #12 — Release workflow            [status: committed — hash in the next entry]
+Phase: 2
+Message:
+    ci: multi-arch image and Linux and Windows binaries on release
+
+    release.yml (roadmap §6.1), on a v* tag: checks the tag against
+    Cargo.toml's version; builds the image for linux/amd64 and
+    linux/arm64, each on its own native runner, pushes both by digest
+    and joins them into ghcr.io/lasr-0/blotter-sync tagged with the
+    version, major.minor, major and latest; builds blotter-sync for
+    Linux amd64 and arm64 (on Ubuntu 22.04, so glibc 2.35 and later)
+    and blotter-sync.exe for Windows x64 (C runtime linked in), each
+    archived with the README and licence; and attaches them with
+    SHA256SUMS to a draft release, published by hand after the live
+    checks. A manual run builds everything without pushing or
+    releasing, keeping the binaries as artifacts. #11 is 139e752.
+Files:
+    A  .github/workflows/release.yml
+    M  .claude/COMMITS.md
+Test steps:
+    - Not runnable locally. Luke: Actions → Release → Run workflow on main → every job
+      green; the three archives are downloadable and `blotter-sync --version` runs
+      (the job runs it too)
+    - The first v* tag pushes the image; then set the GHCR package public once
+      (roadmap §6.1)
+Notes:
+    - Native arm64 runners (ubuntu-22.04-arm, ubuntu-24.04-arm) instead of QEMU or
+      cross-compiling, the roadmap's Phase 2 lead: free for public repos, and no
+      cross toolchain for aws-lc and the bundled SQLite.
+    - Mirrors Blotter's release.yml: draft on a tag, artifacts only on a manual run.
+    - Action majors checked against their repos' tags on 2026-10-23.

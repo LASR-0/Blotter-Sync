@@ -1,0 +1,218 @@
+name: Release
+
+# Builds a release when a version tag is pushed: the multi-arch image
+# (linux/amd64 and linux/arm64) pushed to ghcr.io/lasr-0/blotter-sync with
+# the version, major.minor, major and latest tags, and plain binaries for Linux
+# (amd64, arm64) and Windows (x64) attached to a draft GitHub release.
+# Publish the draft once the live checks pass (roadmap §7).
+#
+# A manual run builds everything without pushing the image or touching a
+# release: the binaries are kept as workflow artifacts.
+#
+# Each architecture builds on its own native runner, which is much faster
+# than building arm64 under QEMU and simpler than cross-compiling
+# aws-lc and the bundled SQLite.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  IMAGE: ghcr.io/lasr-0/blotter-sync
+  RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+jobs:
+  version:
+    name: Tag matches Cargo.toml
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          echo "Cargo.toml: $version"
+          if [ "$RELEASE" = true ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME doesn't match Cargo.toml's $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  binaries:
+    name: Binary (${{ matrix.name }})
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest supported Ubuntu, so the binaries run on glibc 2.35
+          # and later.
+          - name: linux-amd64
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - name: linux-arm64
+            runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+          # The C runtime linked in, so the .exe needs no Visual C++
+          # redistributable.
+          - name: windows-x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            rustflags: -C target-feature=+crt-static
+    runs-on: ${{ matrix.runner }}
+    env:
+      RUSTFLAGS: ${{ matrix.rustflags }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          dir="blotter-sync-${{ needs.version.outputs.version }}-${{ matrix.name }}"
+          mkdir -p "dist/$dir"
+          cp README.md LICENSE "dist/$dir/"
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp "target/${{ matrix.target }}/release/blotter-sync.exe" "dist/$dir/"
+            "dist/$dir/blotter-sync.exe" --version
+            (cd dist && 7z a -tzip "$dir.zip" "$dir" > /dev/null)
+          else
+            cp "target/${{ matrix.target }}/release/blotter-sync" "dist/$dir/"
+            "dist/$dir/blotter-sync" --version
+            tar -C dist -czf "dist/$dir.tar.gz" "$dir"
+          fi
+          rm -r "dist/$dir"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binary-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  image:
+    name: Image (${{ matrix.arch }})
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+      - if: env.RELEASE == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pushed by digest only; the merge job below names the multi-arch
+      # manifest once both architectures are in.
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.RELEASE }}
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
+
+      - if: env.RELEASE == 'true'
+        run: |
+          mkdir -p digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "digests/${digest#sha256:}"
+      - if: env.RELEASE == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+
+  manifest:
+    name: Multi-arch image
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v4
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create the manifest
+        working-directory: digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "$IMAGE@sha256:%s " *)
+      - name: Inspect
+        run: docker buildx imagetools inspect "$IMAGE:${{ needs.version.outputs.version }}"
+
+  release:
+    name: Draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, binaries, manifest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: binary-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          name: Blotter Sync ${{ needs.version.outputs.version }}
+          body: |
+            Image: `ghcr.io/lasr-0/blotter-sync:${{ needs.version.outputs.version }}` (linux/amd64, linux/arm64)
+
+            Works with the Blotter versions in the README's compatibility table.
+          generate_release_notes: true
+          files: dist/*
