@@ -1,7 +1,7 @@
 [package]
 name = "blotter-sync"
 description = "Blotter Sync: a headless Blotter that keeps every desktop's planner in sync."
-version = "0.1.0"
+version = "1.0.0-rc.1"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/LASR-0/Blotter-Sync"

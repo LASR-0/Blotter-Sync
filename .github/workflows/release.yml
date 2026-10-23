@@ -4,7 +4,9 @@ name: Release
 # (linux/amd64 and linux/arm64) pushed to ghcr.io/lasr-0/blotter-sync with
 # the version, major.minor, major and latest tags, and plain binaries for Linux
 # (amd64, arm64) and Windows (x64) attached to a draft GitHub release.
-# Publish the draft once the live checks pass (roadmap §7).
+# Publish the draft once the live checks pass (roadmap §7). A tag with a
+# suffix (v1.0.0-rc.1) is a pre-release: only its own image tag, never
+# latest, major or major.minor, and the release is marked pre-release.
 #
 # A manual run builds everything without pushing the image or touching a
 # release: the binaries are kept as workflow artifacts.
@@ -175,7 +177,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -209,6 +211,7 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           name: Blotter Sync ${{ needs.version.outputs.version }}
           body: |
             Image: `ghcr.io/lasr-0/blotter-sync:${{ needs.version.outputs.version }}` (linux/amd64, linux/arm64)

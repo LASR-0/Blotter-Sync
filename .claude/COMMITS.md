@@ -55,7 +55,8 @@ The file lists are filled in when an entry moves to `ready`. Planned commits may
 | 11 | 1 | — | `build: Dockerfile, non-root and read-only` | committed `139e752`; checked in CI |
 | 12 | 2 | — | `ci: multi-arch image and Linux and Windows binaries on release` | committed `b1e1e64` |
 | 13 | 2 | — | `docs(deploy): compose profiles, native installs and the compatibility table` | committed `3e92976` |
-| 13a | 2 | — | `fix: rate limits name the client behind a local proxy` | committed (hash in the next entry) |
+| 13a | 2 | — | `fix: rate limits name the client behind a local proxy` | committed `f794844` |
+| 13b | 2 | — | `chore(release): v1.0.0-rc.1` | committed (hash in the next entry); tag pushed by Luke |
 | 14 | 2 | #85 | `chore(release): v1.0.0` | planned |
 | 15 | 3 | — | `feat: Home Assistant add-on with an Ingress admin page` | planned (1.1.0, refined after 1.0.0) |
 
@@ -569,3 +570,29 @@ Test steps:
 Notes:
     - Caddy sets X-Forwarded-For. Whether Tailscale Serve does is for the live check;
       without it, its devices still share the sidecar's address, as before.
+
+### #13b — Release candidate 1.0.0-rc.1            [status: committed — hash in the next entry]
+Phase: 2
+Message:
+    chore(release): v1.0.0-rc.1
+
+    A pre-release to prove the tag path before 1.0.0: the GHCR push,
+    the multi-arch manifest and the draft release. release.yml now
+    treats a tag with a suffix as a pre-release, tagging the image
+    with its own version only (never latest, major or major.minor)
+    and marking the GitHub release pre-release. Built against Blotter
+    aa31b69, not a release: no Blotter release can sync with it yet
+    (Blotter #80–#84), so it isn't for real planners. #13a is f794844.
+Files:
+    M  Cargo.toml, Cargo.lock (version 1.0.0-rc.1)
+    M  .github/workflows/release.yml
+    M  .claude/COMMITS.md
+Test steps:
+    - cargo test → 44 unit + 1 integration passed; `blotter-sync --version` →
+      blotter-sync 1.0.0-rc.1
+    - Luke: push main, then `git tag v1.0.0-rc.1 && git push origin v1.0.0-rc.1` → every
+      Release job green; ghcr.io/lasr-0/blotter-sync:1.0.0-rc.1 lists amd64 and arm64; no
+      `latest`; a draft pre-release with three archives and SHA256SUMS
+    - Then set the GHCR package public (Packages → blotter-sync → Package settings)
+Notes:
+    - Not the live checks; those belong to #14, once Blotter 1.2.1 exists.
